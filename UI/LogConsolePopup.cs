@@ -82,6 +82,11 @@ public partial class LogConsolePopup : Window
 
     private void OnWindowInput(InputEvent @event)
     {
+        if (ShouldSuppressWindowShortcuts(@event))
+        {
+            return;
+        }
+
         if (LogConsoleHost.TryHandleToggleShortcut(@event))
         {
             return;
@@ -91,6 +96,30 @@ public partial class LogConsolePopup : Window
         {
             ClosePopup();
         }
+    }
+
+    private bool ShouldSuppressWindowShortcuts(InputEvent @event)
+    {
+        if (@event is not InputEventKey)
+        {
+            return false;
+        }
+
+        if (filterInput == null || !filterInput.IsInsideTree())
+        {
+            return false;
+        }
+
+        Control? focusOwner = GetViewport()?.GuiGetFocusOwner();
+        for (Node? node = focusOwner; node != null; node = node.GetParent())
+        {
+            if (ReferenceEquals(node, filterInput))
+            {
+                return true;
+            }
+        }
+
+        return filterInput.HasFocus() || filterInput.IsEditing();
     }
 
     public void Open()
