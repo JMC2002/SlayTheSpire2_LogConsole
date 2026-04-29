@@ -142,9 +142,18 @@ public static class LogConsoleSettings
 
     [UIInput(256)]
     [Config(
-        "Unicode 字体族候选",
+        "界面字体族候选",
         group: Group,
-        Description = "用分号分隔。Godot 会使用第一个可用字体，并允许系统字体 fallback。",
+        Description = "标题、按钮、筛选框等界面控件使用。用分号分隔，Godot 会使用第一个可用字体并允许系统字体 fallback。",
+        Key = "ui.control_font_families",
+        Order = 79)]
+    public static string ControlFontFamilies = "Segoe UI;Microsoft YaHei UI;Microsoft YaHei;Noto Sans CJK SC;Segoe UI Emoji;Noto Color Emoji";
+
+    [UIInput(256)]
+    [Config(
+        "日志字体族候选",
+        group: Group,
+        Description = "日志正文使用，建议把等宽字体放在前面。用分号分隔，Godot 会使用第一个可用字体并允许系统字体 fallback。",
         Key = "ui.font_families",
         Order = 80)]
     public static string FontFamilies = "Cascadia Mono;Consolas;Microsoft YaHei UI;Microsoft YaHei;Noto Sans CJK SC;Noto Sans Mono CJK SC;Segoe UI Emoji;Noto Color Emoji";
@@ -177,11 +186,11 @@ public static class LogConsoleSettings
         Order = 83)]
     public static int LogFontSize = 22;
 
-    [UIIntSlider(12, 48)]
+    [UIIntSlider(12, 72)]
     [Config(
         "手动界面字体大小",
         group: Group,
-        Description = "关闭自动适配字体大小后使用。",
+        Description = "关闭自动适配字体大小后使用。高 DPI 显示器上可以适当调高。",
         Key = "ui.control_font_size",
         Order = 84)]
     public static int ControlFontSize = 20;

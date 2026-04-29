@@ -12,6 +12,24 @@ public partial class LogConsolePopup : Window
 {
     private static readonly Vector2I DefaultMinSize = new(720, 420);
     private static readonly TimeSpan FilterRegexTimeout = TimeSpan.FromMilliseconds(100.0);
+    private static readonly string[] DefaultControlFontFamilies =
+    [
+        "Segoe UI",
+        "Microsoft YaHei UI",
+        "Microsoft YaHei",
+        "Noto Sans CJK SC",
+        "Segoe UI Emoji",
+        "Noto Color Emoji"
+    ];
+    private static readonly string[] DefaultLogFontFamilies =
+    [
+        "Cascadia Mono",
+        "Consolas",
+        "Microsoft YaHei UI",
+        "Noto Sans CJK SC",
+        "Segoe UI Emoji",
+        "Noto Color Emoji"
+    ];
 
     private LineEdit? filterInput;
     private Label? filterStatus;
@@ -306,6 +324,9 @@ public partial class LogConsolePopup : Window
         ContentScaleMode = ContentScaleModeEnum.Disabled;
         ContentScaleFactor = 1.0f;
         ContentScaleSize = Vector2I.Zero;
+        SetUseFontOversampling(true);
+        OversamplingOverride = GetFontOversampling();
+        GuiSnapControlsToPixels = true;
     }
 
     private void ApplyDisplayServerWindowPlacement(int targetScreen, Vector2I targetSize, Vector2I? targetPosition)
@@ -536,7 +557,7 @@ public partial class LogConsolePopup : Window
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
             Text = ""
         };
-        ApplyOutputFontSize();
+        ApplyOutputFontSettings();
         root.AddChild(output);
     }
 
@@ -768,29 +789,40 @@ public partial class LogConsolePopup : Window
 
     private void ApplyFontSettingsTree()
     {
-        Font font = BuildUnicodeFont();
-        ApplyFontRecursive(this, font);
+        Font controlFont = BuildControlFont();
+        ApplyFontRecursive(this, controlFont);
 
         int controlFontSize = GetEffectiveControlFontSize();
         ApplyFontSizeRecursive(this, controlFontSize);
-        ApplyOutputFontSize();
+        ApplyOutputFontSettings();
 
         lastAppliedFontWindowSize = Size;
         lastAppliedFontScreen = GetWindowCurrentScreen();
         lastAppliedControlFontSize = controlFontSize;
     }
 
-    private void ApplyOutputFontSize()
+    private void ApplyOutputFontSettings()
     {
         if (output == null)
         {
             return;
         }
 
+        Font logFont = BuildLogFont();
+        output.AddThemeFontOverride("font", logFont);
+        output.AddThemeFontOverride("normal_font", logFont);
+        output.AddThemeFontOverride("bold_font", logFont);
+        output.AddThemeFontOverride("italics_font", logFont);
+        output.AddThemeFontOverride("bold_italics_font", logFont);
+        output.AddThemeFontOverride("mono_font", logFont);
+
         int logFontSize = GetEffectiveLogFontSize();
         output.AddThemeFontSizeOverride("font_size", logFontSize);
         output.AddThemeFontSizeOverride("normal_font_size", logFontSize);
         output.AddThemeFontSizeOverride("mono_font_size", logFontSize);
+        output.AddThemeFontSizeOverride("bold_font_size", logFontSize);
+        output.AddThemeFontSizeOverride("italics_font_size", logFontSize);
+        output.AddThemeFontSizeOverride("bold_italics_font_size", logFontSize);
         output.AddThemeConstantOverride("line_separation", Math.Clamp(LogConsoleSettings.LogLineSpacing, 0, 16));
 
         lastAppliedLogFontSize = logFontSize;
@@ -823,10 +855,14 @@ public partial class LogConsolePopup : Window
     {
         if (!LogConsoleSettings.AutoScaleFont)
         {
-            return Math.Clamp(LogConsoleSettings.ControlFontSize, 12, 48);
+            return Math.Clamp(LogConsoleSettings.ControlFontSize, 12, 72);
         }
 
-        return Math.Clamp(GetEffectiveLogFontSize() - 2, 13, 38);
+        int logFontSize = GetEffectiveLogFontSize();
+        int dpiAdjustedMinimum = (int)MathF.Round(15.5f * GetDpiScale());
+        int preferredSize = Math.Max(logFontSize, dpiAdjustedMinimum);
+
+        return Math.Clamp(preferredSize, 13, 72);
     }
 
     private int GetCurrentScreenDpi()
@@ -1048,39 +1084,83 @@ public partial class LogConsolePopup : Window
 
     private float GetGentleDpiFactor()
     {
-        int dpi = GetCurrentScreenDpi();
-        if (dpi <= 96)
+        float dpiScale = GetDpiScale();
+        if (dpiScale <= 1.0f)
         {
             return 1.0f;
         }
-
-        float dpiScale = Math.Clamp(dpi / 96f, 1.0f, 4.0f);
 
         // DPI 只做温和加权，避免 200%/300% 缩放时字号被成倍放大。
         return 1.0f + (MathF.Sqrt(dpiScale) - 1.0f) * 0.35f;
     }
 
-    private static Font BuildUnicodeFont()
+    private float GetDpiScale()
     {
-        string[] names = LogConsoleSettings.FontFamilies
+        int dpi = GetCurrentScreenDpi();
+        if (dpi <= 0)
+        {
+            return 1.0f;
+        }
+
+        return Math.Clamp(dpi / 96f, 1.0f, 4.0f);
+    }
+
+    private float GetFontOversampling()
+    {
+        return GetDpiScale();
+    }
+
+    private Font BuildControlFont()
+    {
+        return BuildSystemFont(
+            LogConsoleSettings.ControlFontFamilies,
+            DefaultControlFontFamilies,
+            GetFontOversampling(),
+            TextServer.FontAntialiasing.Lcd,
+            TextServer.Hinting.Light,
+            TextServer.SubpixelPositioning.OneQuarter,
+            500);
+    }
+
+    private Font BuildLogFont()
+    {
+        return BuildSystemFont(
+            LogConsoleSettings.FontFamilies,
+            DefaultLogFontFamilies,
+            GetFontOversampling(),
+            TextServer.FontAntialiasing.Gray,
+            TextServer.Hinting.Normal,
+            TextServer.SubpixelPositioning.Auto,
+            400);
+    }
+
+    private static Font BuildSystemFont(
+        string configuredFamilies,
+        string[] defaultFamilies,
+        float oversampling,
+        TextServer.FontAntialiasing antialiasing,
+        TextServer.Hinting hinting,
+        TextServer.SubpixelPositioning subpixelPositioning,
+        int fontWeight)
+    {
+        string[] names = configuredFamilies
             .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         if (names.Length == 0)
         {
-            names =
-            [
-                "Cascadia Mono",
-                "Consolas",
-                "Microsoft YaHei UI",
-                "Noto Sans CJK SC",
-                "Segoe UI Emoji",
-                "Noto Color Emoji"
-            ];
+            names = defaultFamilies;
         }
 
         return new SystemFont
         {
             FontNames = names,
+            FontWeight = Math.Clamp(fontWeight, 100, 999),
+            Antialiasing = antialiasing,
+            Hinting = hinting,
+            SubpixelPositioning = subpixelPositioning,
+            DisableEmbeddedBitmaps = true,
+            KeepRoundingRemainders = true,
+            Oversampling = Math.Clamp(oversampling, 1.0f, 4.0f),
             AllowSystemFallback = true,
             ModulateColorGlyphs = true
         };
