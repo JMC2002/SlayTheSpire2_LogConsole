@@ -1,0 +1,11 @@
+﻿{
+    "id": "LogConsole",
+    "name": "LogConsole",
+    "author": "JMC",
+    "version": "1.4.0",
+    "description": "LogConsole Description",
+    "has_pck": true,
+    "has_dll": true,
+    "dependencies": ["JmcModLib"],
+    "affects_gameplay": false
+}
