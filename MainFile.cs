@@ -21,12 +21,14 @@ public partial class MainFile : Node
                 LogConsoleHost.Toggle,
                 "切换窗口",
                 group: "日志窗口",
+                storageKey: "button.toggle_window",
                 order: 100)
             .RegisterButton(
                 "清空日志窗口缓存",
                 LogCaptureService.Clear,
                 "清空日志",
                 group: "日志窗口",
+                storageKey: "button.clear_logs",
                 order: 110)
             .UseConfig()
             .Done();

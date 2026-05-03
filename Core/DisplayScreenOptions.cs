@@ -4,8 +4,9 @@ namespace JmcLogConsole.Core;
 
 public static class DisplayScreenOptions
 {
-    public const string FollowGameWindow = "跟随游戏窗口";
-    public const string PrimaryScreen = "主显示器";
+    public const string FollowGameWindow = "follow_game_window";
+    public const string PrimaryScreen = "primary_screen";
+    private const string ScreenPrefix = "screen.";
 
     public static IReadOnlyList<string> GetOptions()
     {
@@ -35,9 +36,17 @@ public static class DisplayScreenOptions
         }
 
         if (string.Equals(option, FollowGameWindow, StringComparison.Ordinal)
-            || string.Equals(option, PrimaryScreen, StringComparison.Ordinal))
+            || string.Equals(option, "跟随游戏窗口", StringComparison.Ordinal)
+            || string.Equals(option, "Follow game window", StringComparison.OrdinalIgnoreCase))
         {
-            return option;
+            return FollowGameWindow;
+        }
+
+        if (string.Equals(option, PrimaryScreen, StringComparison.Ordinal)
+            || string.Equals(option, "主显示器", StringComparison.Ordinal)
+            || string.Equals(option, "Primary display", StringComparison.OrdinalIgnoreCase))
+        {
+            return PrimaryScreen;
         }
 
         return TryParseScreenIndex(option, out int screen)
@@ -53,7 +62,9 @@ public static class DisplayScreenOptions
             return false;
         }
 
-        return TryParseNumberAfterPrefix(option, "显示器 ", zeroBased: false, out screen)
+        return TryParseNumberAfterPrefix(option, ScreenPrefix, zeroBased: true, out screen)
+            || TryParseNumberAfterPrefix(option, "screen:", zeroBased: true, out screen)
+            || TryParseNumberAfterPrefix(option, "显示器 ", zeroBased: false, out screen)
             || TryParseNumberAfterPrefix(option, "Display ", zeroBased: false, out screen)
             || TryParseMonitorIndex(option, out screen);
     }
@@ -61,8 +72,8 @@ public static class DisplayScreenOptions
     private static string FormatScreenOption(int screen, int primaryScreen)
     {
         return screen == primaryScreen
-            ? $"显示器 {screen + 1}（主显示器）"
-            : $"显示器 {screen + 1}";
+            ? $"{ScreenPrefix}{screen}.primary"
+            : $"{ScreenPrefix}{screen}";
     }
 
     private static bool TryParseNumberAfterPrefix(string option, string prefix, bool zeroBased, out int screen)

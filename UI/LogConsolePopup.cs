@@ -34,6 +34,12 @@ public partial class LogConsolePopup : Window
     private LineEdit? filterInput;
     private Label? filterStatus;
     private RichTextLabel? output;
+    private Label? titleLabel;
+    private Button? copyButton;
+    private Button? clearButton;
+    private Button? closeButton;
+    private Label? filterLabel;
+    private Button? copyFilteredButton;
     private int renderedVersion = -1;
     private bool initialized;
     private bool openedOnce;
@@ -44,6 +50,7 @@ public partial class LogConsolePopup : Window
     private int lastAppliedFontScreen = -1;
     private int lastAppliedLogFontSize = -1;
     private int lastAppliedControlFontSize = -1;
+    private string lastAppliedLanguage = string.Empty;
     private bool firstNativeDpiRefreshDone;
 
     public override void _Ready()
@@ -61,7 +68,7 @@ public partial class LogConsolePopup : Window
 
         initialized = true;
 
-        Title = "Jmc Log Console - 日志窗口";
+        Title = T("WINDOW_TITLE", "Jmc Log Console - 日志窗口");
         Size = GetConfiguredDefaultWindowSize();
         MinSize = DefaultMinSize;
         Transient = false;
@@ -78,6 +85,7 @@ public partial class LogConsolePopup : Window
         WindowInput += OnWindowInput;
 
         BuildLayout();
+        ApplyLocalizedText();
         ApplyFontSettingsTree();
 
         ModLogger.Info($"JmcLogConsoleWindow 初始化完成。ForceNative={ForceNative} Transient={Transient} Size={Size} AutoFont={LogConsoleSettings.AutoScaleFont} AutoWindow={LogConsoleSettings.AutoScaleWindowSize}");
@@ -86,6 +94,16 @@ public partial class LogConsolePopup : Window
 
     public override void _Process(double delta)
     {
+        string currentLanguage = L10n.CurrentLanguage;
+        if (!string.Equals(currentLanguage, lastAppliedLanguage, StringComparison.Ordinal))
+        {
+            ApplyLocalizedText();
+            if (Visible)
+            {
+                Render(force: true);
+            }
+        }
+
         int activeScreen = GetWindowCurrentScreen();
         if (!Visible
             || !LogConsoleSettings.AutoScaleFont
@@ -476,25 +494,18 @@ public partial class LogConsolePopup : Window
         };
         root.AddChild(header);
 
-        var title = new Label
+        titleLabel = new Label
         {
-            Text = "Jmc Log Console  日志窗口  中文 / 日本語 / 한국어 / Ω / ✅",
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
-        title.AddThemeFontSizeOverride("font_size", LogConsoleSettings.ControlFontSize + 2);
-        header.AddChild(title);
+        titleLabel.AddThemeFontSizeOverride("font_size", LogConsoleSettings.ControlFontSize + 2);
+        header.AddChild(titleLabel);
 
-        var copyButton = new Button
-        {
-            Text = "复制全部"
-        };
+        copyButton = new Button();
         copyButton.Pressed += CopyPlainText;
         header.AddChild(copyButton);
 
-        var clearButton = new Button
-        {
-            Text = "清空"
-        };
+        clearButton = new Button();
         clearButton.Pressed += () =>
         {
             LogCaptureService.Clear();
@@ -502,10 +513,7 @@ public partial class LogConsolePopup : Window
         };
         header.AddChild(clearButton);
 
-        var closeButton = new Button
-        {
-            Text = "关闭 Esc"
-        };
+        closeButton = new Button();
         closeButton.Pressed += ClosePopup;
         header.AddChild(closeButton);
 
@@ -515,25 +523,18 @@ public partial class LogConsolePopup : Window
         };
         root.AddChild(filterRow);
 
-        var filterLabel = new Label
-        {
-            Text = "正则筛选"
-        };
+        filterLabel = new Label();
         filterRow.AddChild(filterLabel);
 
         filterInput = new LineEdit
         {
-            PlaceholderText = "Regex",
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             ClearButtonEnabled = true
         };
         filterInput.TextChanged += OnFilterTextChanged;
         filterRow.AddChild(filterInput);
 
-        var copyFilteredButton = new Button
-        {
-            Text = "复制显示"
-        };
+        copyFilteredButton = new Button();
         copyFilteredButton.Pressed += CopyFilteredPlainText;
         filterRow.AddChild(copyFilteredButton);
 
@@ -575,7 +576,7 @@ public partial class LogConsolePopup : Window
         {
             UpdateFilterStatus(0, 0);
             output.PushColor(new Color(0.54f, 0.57f, 0.60f));
-            output.AddText("暂无日志。No logs yet. 支持 Unicode：中文 / 日本語 / 한국어 / Ω / ✅");
+            output.AddText(T("NO_LOGS", "暂无日志。No logs yet."));
             output.Pop();
             renderedVersion = LogCaptureService.Version;
             return;
@@ -587,7 +588,7 @@ public partial class LogConsolePopup : Window
         if (visibleEntries.Length == 0)
         {
             output.PushColor(new Color(0.54f, 0.57f, 0.60f));
-            output.AddText(filterError ?? "没有匹配的日志。");
+            output.AddText(filterError ?? T("NO_MATCHES", "没有匹配的日志。"));
             output.Pop();
             renderedVersion = LogCaptureService.Version;
             return;
@@ -719,6 +720,53 @@ public partial class LogConsolePopup : Window
 
         builder.Append(NormalizeNewlines(entry.Message));
         return builder.ToString();
+    }
+
+    private void ApplyLocalizedText()
+    {
+        Title = T("WINDOW_TITLE", "Jmc Log Console - 日志窗口");
+
+        if (titleLabel != null)
+        {
+            titleLabel.Text = T("HEADER_TITLE", "Jmc Log Console  日志窗口");
+        }
+
+        if (copyButton != null)
+        {
+            copyButton.Text = T("COPY_ALL", "复制全部");
+        }
+
+        if (clearButton != null)
+        {
+            clearButton.Text = T("CLEAR", "清空");
+        }
+
+        if (closeButton != null)
+        {
+            closeButton.Text = T("CLOSE_ESC", "关闭 Esc");
+        }
+
+        if (filterLabel != null)
+        {
+            filterLabel.Text = T("FILTER_LABEL", "正则筛选");
+        }
+
+        if (filterInput != null)
+        {
+            filterInput.PlaceholderText = T("FILTER_PLACEHOLDER", "Regex");
+        }
+
+        if (copyFilteredButton != null)
+        {
+            copyFilteredButton.Text = T("COPY_VISIBLE", "复制显示");
+        }
+
+        lastAppliedLanguage = L10n.CurrentLanguage;
+    }
+
+    private static string T(string key, string fallback)
+    {
+        return L10n.Resolve($"EXTENSION.JMCLOGCONSOLE.UI.{key}", fallback);
     }
 
     private static string BuildPlainText(LogEntry[] entries)
