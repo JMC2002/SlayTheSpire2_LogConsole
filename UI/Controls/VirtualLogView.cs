@@ -39,6 +39,7 @@ public partial class VirtualLogView : Control
     private float maxVisibleLineWidth;
     private Vector2 lastObservedSize = new(-1f, -1f);
     private int viewportRows = 1;
+    private int wrapColumns = 120;
     private int diagnosticsRemaining = 16;
     private int drawDiagnosticsRemaining = 8;
     private int eventDiagnosticsRemaining = 48;
@@ -207,15 +208,20 @@ public partial class VirtualLogView : Control
             selectionState.Clear();
         }
 
+        horizontalOffset = 0f;
+        horizontalScrollBar.Visible = false;
         viewportRows = CalculateViewportRows();
-        snapshot = model.CreateSnapshot(snapshot.FirstRow, viewportRows, formatter);
+        wrapColumns = CalculateWrapColumns();
+        snapshot = model.CreateSnapshot(snapshot.FirstRow, viewportRows, formatter, wrapColumns);
         scrollBarAdapter?.Update(snapshot.TotalRows, viewportRows, snapshot.FirstRow);
         UpdateHorizontalScrollRange();
         int adjustedViewportRows = CalculateViewportRows();
-        if (adjustedViewportRows != viewportRows)
+        int adjustedWrapColumns = CalculateWrapColumns();
+        if (adjustedViewportRows != viewportRows || adjustedWrapColumns != wrapColumns)
         {
             viewportRows = adjustedViewportRows;
-            snapshot = model.CreateSnapshot(snapshot.FirstRow, viewportRows, formatter);
+            wrapColumns = adjustedWrapColumns;
+            snapshot = model.CreateSnapshot(snapshot.FirstRow, viewportRows, formatter, wrapColumns);
             scrollBarAdapter?.Update(snapshot.TotalRows, viewportRows, snapshot.FirstRow);
             UpdateHorizontalScrollRange();
         }
@@ -417,7 +423,7 @@ public partial class VirtualLogView : Control
         }
 
         int before = snapshot.FirstRow;
-        model.ScrollByRows(rows, viewportRows);
+        model.ScrollByRows(rows, viewportRows, formatter, wrapColumns);
         selectionState.Clear();
         Refresh();
         LogEventDiagnostic($"ScrollRows delta={rows} before={before} after={snapshot.FirstRow} totalRows={snapshot.TotalRows} viewportRows={viewportRows}");
@@ -430,7 +436,7 @@ public partial class VirtualLogView : Control
             return;
         }
 
-        model.SetFirstVisibleRow(value, viewportRows);
+        model.SetFirstVisibleRow(value, viewportRows, formatter, wrapColumns);
         selectionState.Clear();
         Refresh();
     }
@@ -502,6 +508,22 @@ public partial class VirtualLogView : Control
         }
 
         return Math.Max(1, (int)MathF.Ceiling(GetTextHeight() / rowHeight));
+    }
+
+    private int CalculateWrapColumns()
+    {
+        if (logFont == null)
+        {
+            return 120;
+        }
+
+        float charWidth = logFont.GetStringSize("M", fontSize: logFontSize).X;
+        if (charWidth <= 0f)
+        {
+            charWidth = MathF.Max(1f, logFontSize * 0.6f);
+        }
+
+        return Math.Max(16, (int)MathF.Floor(GetContentWidth() / charWidth));
     }
 
     private void DrawSingleLine(string text, Color color)
@@ -685,28 +707,18 @@ public partial class VirtualLogView : Control
 
     private void UpdateHorizontalScrollRange()
     {
+        horizontalOffset = 0f;
+        if (horizontalScrollBar.Visible)
+        {
+            horizontalScrollBar.Visible = false;
+            LayoutInteractiveChildren();
+        }
+
         maxVisibleLineWidth = 0f;
         foreach (LogRenderLine line in snapshot.Lines)
         {
             maxVisibleLineWidth = MathF.Max(maxVisibleLineWidth, GetTextPrefixWidth(line.Text, line.Text.Length));
         }
-
-        float contentWidth = GetContentWidth();
-        bool shouldShow = maxVisibleLineWidth > contentWidth + 1f;
-        if (horizontalScrollBar.Visible != shouldShow)
-        {
-            horizontalScrollBar.Visible = shouldShow;
-            LayoutInteractiveChildren();
-        }
-
-        float maxOffset = GetMaxHorizontalOffset();
-        horizontalOffset = Math.Clamp(horizontalOffset, 0f, maxOffset);
-
-        horizontalScrollBar.MinValue = 0;
-        horizontalScrollBar.MaxValue = Math.Max(contentWidth, maxVisibleLineWidth);
-        horizontalScrollBar.Page = Math.Max(1f, contentWidth);
-        horizontalScrollBar.Step = HorizontalWheelPixels;
-        horizontalScrollBar.Value = horizontalOffset;
     }
 
     private void KeepInteractiveChildrenOnTop()
@@ -862,7 +874,7 @@ public partial class VirtualLogView : Control
         }
 
         int rowCount = end.Row - start.Row + 1;
-        IReadOnlyList<LogRenderLine> lines = model.CreateRenderLinesForRows(start.Row, rowCount, formatter);
+        IReadOnlyList<LogRenderLine> lines = model.CreateRenderLinesForRows(start.Row, rowCount, formatter, wrapColumns);
         if (lines.Count == 0)
         {
             return false;

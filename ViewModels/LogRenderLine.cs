@@ -11,7 +11,15 @@ public readonly record struct LogRenderLine(
 {
     public static LogRenderLine FromEntry(JmcLogConsole.Core.LogEntry entry, string text)
     {
-        return new LogRenderLine(entry.Sequence, text.Replace("\n", " \\n "), entry.Level, ColorFor(entry.Level));
+        return new LogRenderLine(entry.Sequence, NormalizeDisplayNewlines(text), entry.Level, ColorFor(entry.Level));
+    }
+
+    private static string NormalizeDisplayNewlines(string text)
+    {
+        return text.Replace("\r\n", "\n")
+            .Replace('\r', '\n')
+            .Replace(" \\r\\n ", "\n")
+            .Replace(" \\n ", "\n");
     }
 
     private static Color ColorFor(LogLevel level)

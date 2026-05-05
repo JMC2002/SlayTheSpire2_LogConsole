@@ -92,6 +92,11 @@ public sealed class LogViewportModel
 
     public LogViewportSnapshot CreateSnapshot(int requestedFirstRow, int requestedRowCount, LogLineFormatter formatter)
     {
+        return CreateSnapshot(requestedFirstRow, requestedRowCount, formatter, wrapColumns: 0);
+    }
+
+    public LogViewportSnapshot CreateSnapshot(int requestedFirstRow, int requestedRowCount, LogLineFormatter formatter, int wrapColumns)
+    {
         Refresh(formatter);
 
         if (filter.HasPattern && !filter.IsUsable)
@@ -99,7 +104,7 @@ public sealed class LogViewportModel
             return LogViewportSnapshot.Empty(FollowTail, filter.Error);
         }
 
-        int totalRows = GetTotalRowsNoRefresh();
+        int totalRows = GetTotalRowsForLayout(formatter, wrapColumns);
         if (totalRows <= 0)
         {
             firstVisibleRow = 0;
@@ -112,12 +117,9 @@ public sealed class LogViewportModel
             ? maxFirstRow
             : Math.Clamp(firstVisibleRow, 0, maxFirstRow);
 
-        IReadOnlyList<LogEntry> entries = GetEntriesForRows(firstVisibleRow, rowCount);
-        var renderLines = new List<LogRenderLine>(entries.Count);
-        foreach (LogEntry entry in entries)
-        {
-            renderLines.Add(LogRenderLine.FromEntry(entry, formatter.Format(entry)));
-        }
+        IReadOnlyList<LogRenderLine> renderLines = wrapColumns > 0
+            ? CreateWrappedRenderLines(firstVisibleRow, rowCount, formatter, wrapColumns)
+            : CreateEntryRenderLines(firstVisibleRow, rowCount, formatter);
 
         int lastRow = renderLines.Count == 0
             ? firstVisibleRow
@@ -135,7 +137,14 @@ public sealed class LogViewportModel
 
     public void SetFirstVisibleRow(int value, int viewportRows)
     {
-        int totalRows = GetTotalRowsNoRefresh();
+        SetFirstVisibleRow(value, viewportRows, null, 0);
+    }
+
+    public void SetFirstVisibleRow(int value, int viewportRows, LogLineFormatter? formatter, int wrapColumns)
+    {
+        int totalRows = formatter == null
+            ? GetTotalRowsNoRefresh()
+            : GetTotalRowsForLayout(formatter, wrapColumns);
         int maxFirstRow = Math.Max(0, totalRows - Math.Max(1, viewportRows));
         firstVisibleRow = Math.Clamp(value, 0, maxFirstRow);
         FollowTail = firstVisibleRow >= maxFirstRow;
@@ -144,6 +153,11 @@ public sealed class LogViewportModel
     public void ScrollByRows(int deltaRows, int viewportRows)
     {
         SetFirstVisibleRow(firstVisibleRow + deltaRows, viewportRows);
+    }
+
+    public void ScrollByRows(int deltaRows, int viewportRows, LogLineFormatter formatter, int wrapColumns)
+    {
+        SetFirstVisibleRow(firstVisibleRow + deltaRows, viewportRows, formatter, wrapColumns);
     }
 
     public void ScrollToStart()
@@ -173,13 +187,63 @@ public sealed class LogViewportModel
 
     public IReadOnlyList<LogRenderLine> CreateRenderLinesForRows(int startRow, int rowCount, LogLineFormatter formatter)
     {
+        return CreateRenderLinesForRows(startRow, rowCount, formatter, wrapColumns: 0);
+    }
+
+    public IReadOnlyList<LogRenderLine> CreateRenderLinesForRows(int startRow, int rowCount, LogLineFormatter formatter, int wrapColumns)
+    {
         Refresh(formatter);
 
+        if (wrapColumns > 0)
+        {
+            return CreateWrappedRenderLines(startRow, Math.Max(1, rowCount), formatter, wrapColumns);
+        }
+
+        return CreateEntryRenderLines(startRow, rowCount, formatter);
+    }
+
+    private IReadOnlyList<LogRenderLine> CreateEntryRenderLines(int startRow, int rowCount, LogLineFormatter formatter)
+    {
         IReadOnlyList<LogEntry> entries = GetEntriesForRows(startRow, Math.Max(1, rowCount));
         var renderLines = new List<LogRenderLine>(entries.Count);
         foreach (LogEntry entry in entries)
         {
             renderLines.Add(LogRenderLine.FromEntry(entry, formatter.Format(entry)));
+        }
+
+        return renderLines;
+    }
+
+    private IReadOnlyList<LogRenderLine> CreateWrappedRenderLines(int startRow, int rowCount, LogLineFormatter formatter, int wrapColumns)
+    {
+        int safeWrapColumns = Math.Max(1, wrapColumns);
+        int endRow = startRow + Math.Max(1, rowCount);
+        int visualRow = 0;
+        var renderLines = new List<LogRenderLine>(rowCount);
+
+        foreach (LogEntry entry in GetCurrentEntries())
+        {
+            LogRenderLine line = LogRenderLine.FromEntry(entry, formatter.Format(entry));
+            int wrappedCount = GetWrappedLineCount(line.Text, safeWrapColumns);
+            if (visualRow + wrappedCount <= startRow)
+            {
+                visualRow += wrappedCount;
+                continue;
+            }
+
+            foreach (string wrappedText in WrapText(line.Text, safeWrapColumns))
+            {
+                if (visualRow >= startRow && visualRow < endRow)
+                {
+                    renderLines.Add(new LogRenderLine(line.Sequence, wrappedText, line.Level, line.Color));
+                }
+
+                visualRow++;
+                if (visualRow >= endRow)
+                {
+                    return renderLines;
+                }
+            }
         }
 
         return renderLines;
@@ -232,6 +296,89 @@ public sealed class LogViewportModel
         }
 
         return LogCaptureService.GetRange(startRow, rowCount);
+    }
+
+    private IEnumerable<LogEntry> GetCurrentEntries()
+    {
+        if (filter.HasPattern)
+        {
+            return filter.IsUsable ? filteredEntries : [];
+        }
+
+        return LogCaptureService.Snapshot();
+    }
+
+    private int GetTotalRowsForLayout(LogLineFormatter formatter, int wrapColumns)
+    {
+        if (wrapColumns <= 0)
+        {
+            return GetTotalRowsNoRefresh();
+        }
+
+        int totalRows = 0;
+        int safeWrapColumns = Math.Max(1, wrapColumns);
+        foreach (LogEntry entry in GetCurrentEntries())
+        {
+            string text = LogRenderLine.FromEntry(entry, formatter.Format(entry)).Text;
+            totalRows += GetWrappedLineCount(text, safeWrapColumns);
+        }
+
+        return totalRows;
+    }
+
+    private static int GetWrappedLineCount(string text, int wrapColumns)
+    {
+        int totalRows = 0;
+        foreach (string line in SplitDisplayLines(text))
+        {
+            totalRows += line.Length == 0 ? 1 : (line.Length + wrapColumns - 1) / wrapColumns;
+        }
+
+        return Math.Max(1, totalRows);
+    }
+
+    private static IEnumerable<string> WrapText(string text, int wrapColumns)
+    {
+        foreach (string line in SplitDisplayLines(text))
+        {
+            if (line.Length == 0)
+            {
+                yield return string.Empty;
+                continue;
+            }
+
+            for (int start = 0; start < line.Length; start += wrapColumns)
+            {
+                int length = Math.Min(wrapColumns, line.Length - start);
+                yield return line.Substring(start, length);
+            }
+        }
+    }
+
+    private static IEnumerable<string> SplitDisplayLines(string text)
+    {
+        if (text.Length == 0)
+        {
+            yield return string.Empty;
+            yield break;
+        }
+
+        int start = 0;
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] != '\n')
+            {
+                continue;
+            }
+
+            yield return text[start..i];
+            start = i + 1;
+        }
+
+        if (start <= text.Length)
+        {
+            yield return text[start..];
+        }
     }
 
     private int GetTotalRowsNoRefresh()
