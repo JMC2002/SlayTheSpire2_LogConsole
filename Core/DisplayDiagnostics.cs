@@ -30,7 +30,7 @@ internal static class DisplayDiagnostics
 
         lastSnapshot = snapshot;
         lastSnapshotTicks = now;
-        ModLogger.Info($"[LogConsole.DisplayDiag] {context}\n{snapshot}");
+        ModLogger.Debug($"[LogConsole.DisplayDiag] {context}\n{snapshot}");
     }
 
     public static void LogWindowState(
@@ -72,7 +72,7 @@ internal static class DisplayDiagnostics
             .Append("  window=")
             .Append(BuildWindowSummary(window));
 
-        ModLogger.Info(builder.ToString());
+        ModLogger.Debug(builder.ToString());
     }
 
     private static string BuildDisplaySnapshot()

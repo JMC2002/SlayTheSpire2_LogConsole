@@ -975,7 +975,7 @@ public partial class VirtualLogView : Control
             diagnosticsRemaining--;
         }
 
-        ModLogger.Info($"[LogConsole.VirtualViewDiag] {message}");
+        ModLogger.Debug($"[LogConsole.VirtualViewDiag] {message}");
     }
 
     private void LogEventDiagnostic(string message)
@@ -986,6 +986,6 @@ public partial class VirtualLogView : Control
         }
 
         eventDiagnosticsRemaining--;
-        ModLogger.Info($"[LogConsole.VirtualViewEvent] {message}");
+        ModLogger.Trace($"[LogConsole.VirtualViewEvent] {message}");
     }
 }
