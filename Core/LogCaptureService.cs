@@ -12,6 +12,7 @@ public static class LogCaptureService
     private static bool startupReplayInProgress;
     private static bool initialized;
     private static int version;
+    private static long nextSequence;
 
     public static event Action? Changed;
 
@@ -79,12 +80,47 @@ public static class LogCaptureService
         }
     }
 
+    public static LogBufferInfo GetInfo()
+    {
+        lock (Gate)
+        {
+            return CreateInfoNoLock();
+        }
+    }
+
+    public static LogEntry[] GetRange(int startIndex, int count)
+    {
+        if (count <= 0)
+        {
+            return [];
+        }
+
+        lock (Gate)
+        {
+            if (startIndex < 0 || startIndex >= Entries.Count)
+            {
+                return [];
+            }
+
+            int take = Math.Min(count, Entries.Count - startIndex);
+            return Entries.Skip(startIndex).Take(take).ToArray();
+        }
+    }
+
+    public static LogEntry[] GetEntriesAfter(long sequence)
+    {
+        lock (Gate)
+        {
+            return Entries.Where(entry => entry.Sequence > sequence).ToArray();
+        }
+    }
+
     private static void OnLogCallback(LogLevel level, string message, int skipFrames)
     {
         // 这个回调在游戏 Logger 锁内触发；这里必须尽量轻量，不能直接操作 Godot UI，也不要再打日志。
         try
         {
-            LogEntry entry = new(DateTime.Now, level, message ?? string.Empty);
+            LogEntry entry = new(0, DateTime.Now, level, message ?? string.Empty);
             if (AppendCallbackEntryNoNotify(entry))
             {
                 NotifyChanged();
@@ -145,7 +181,7 @@ public static class LogCaptureService
             string header = truncated
                 ? $"[LogConsole] 已导入当前游戏日志文件末尾约 {maxBytes / 1024} KB: {logSnapshot.Path}"
                 : $"[LogConsole] 已导入当前游戏日志文件: {logSnapshot.Path}";
-            changed |= AppendEntryNoNotify(new LogEntry(timestamp, LogLevel.Info, header));
+            changed |= AppendEntryNoNotify(new LogEntry(0, timestamp, LogLevel.Info, header));
 
             foreach (LogEntry entry in ParseLogFileText(text, timestamp))
             {
@@ -295,11 +331,11 @@ public static class LogCaptureService
             if (entries.Count > 0 && IsContinuationLine(line))
             {
                 LogEntry previous = entries[^1];
-                entries[^1] = new LogEntry(previous.Time, previous.Level, previous.Message + "\n" + line);
+                entries[^1] = new LogEntry(previous.Sequence, previous.Time, previous.Level, previous.Message + "\n" + line);
                 continue;
             }
 
-            entries.Add(new LogEntry(timestamp, LogLevel.Info, line));
+            entries.Add(new LogEntry(0, timestamp, LogLevel.Info, line));
         }
 
         return entries;
@@ -316,7 +352,7 @@ public static class LogCaptureService
                 && TryParseLevelToken(line[1..closeIndex], out LogLevel bracketLevel))
             {
                 string message = line[(closeIndex + 1)..].TrimStart();
-                entry = new LogEntry(timestamp, bracketLevel, message);
+                entry = new LogEntry(0, timestamp, bracketLevel, message);
                 return true;
             }
         }
@@ -326,7 +362,7 @@ public static class LogCaptureService
             && TryParseLevelToken(line[..colonIndex], out LogLevel colonLevel))
         {
             string message = line[(colonIndex + 1)..].TrimStart();
-            entry = new LogEntry(timestamp, colonLevel, message);
+            entry = new LogEntry(0, timestamp, colonLevel, message);
             return true;
         }
 
@@ -382,7 +418,7 @@ public static class LogCaptureService
                 return false;
             }
 
-            Entries.Enqueue(entry);
+            Entries.Enqueue(AssignSequenceNoLock(entry));
             TrimNoLock();
             Interlocked.Increment(ref version);
         }
@@ -399,7 +435,7 @@ public static class LogCaptureService
 
         lock (Gate)
         {
-            Entries.Enqueue(entry);
+            Entries.Enqueue(AssignSequenceNoLock(entry));
             TrimNoLock();
             Interlocked.Increment(ref version);
         }
@@ -419,7 +455,7 @@ public static class LogCaptureService
 
             foreach (LogEntry entry in StartupBufferedEntries)
             {
-                Entries.Enqueue(entry);
+                Entries.Enqueue(AssignSequenceNoLock(entry));
             }
 
             StartupBufferedEntries.Clear();
@@ -468,4 +504,24 @@ public static class LogCaptureService
             Entries.Dequeue();
         }
     }
+
+    private static LogEntry AssignSequenceNoLock(LogEntry entry)
+    {
+        return entry.Sequence > 0
+            ? entry
+            : entry with { Sequence = ++nextSequence };
+    }
+
+    private static LogBufferInfo CreateInfoNoLock()
+    {
+        return Entries.Count == 0
+            ? new LogBufferInfo(0, 0, 0, version)
+            : new LogBufferInfo(Entries.Count, Entries.Peek().Sequence, Entries.Last().Sequence, version);
+    }
+
+    public readonly record struct LogBufferInfo(
+        int Count,
+        long FirstSequence,
+        long LastSequence,
+        int Version);
 }

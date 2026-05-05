@@ -1,8 +1,8 @@
 using System;
-using System.Text;
-using System.Text.RegularExpressions;
 using Godot;
 using JmcLogConsole.Core;
+using JmcLogConsole.UI.Controls;
+using JmcLogConsole.ViewModels;
 using JmcModLib.Utils;
 using MegaCrit.Sts2.Core.Logging;
 
@@ -11,7 +11,6 @@ namespace JmcLogConsole.UI;
 public partial class LogConsolePopup : Window
 {
     private static readonly Vector2I DefaultMinSize = new(720, 420);
-    private static readonly TimeSpan FilterRegexTimeout = TimeSpan.FromMilliseconds(100.0);
     private static readonly string[] DefaultControlFontFamilies =
     [
         "Segoe UI",
@@ -33,7 +32,7 @@ public partial class LogConsolePopup : Window
 
     private LineEdit? filterInput;
     private Label? filterStatus;
-    private RichTextLabel? output;
+    private VirtualLogView? output;
     private Label? titleLabel;
     private Button? copyButton;
     private Button? clearButton;
@@ -43,9 +42,11 @@ public partial class LogConsolePopup : Window
     private int renderedVersion = -1;
     private bool initialized;
     private bool openedOnce;
+    private readonly LogViewportModel viewportModel = new();
+    private LogLineFormatter formatter = LogLineFormatter.FromSettings();
+    private Godot.Timer? filterDebounceTimer;
     private string filterPattern = string.Empty;
-    private Regex? filterRegex;
-    private string? filterError;
+    private string pendingFilterPattern = string.Empty;
     private Vector2I lastAppliedFontWindowSize = new(-1, -1);
     private int lastAppliedFontScreen = -1;
     private int lastAppliedLogFontSize = -1;
@@ -100,7 +101,7 @@ public partial class LogConsolePopup : Window
             ApplyLocalizedText();
             if (Visible)
             {
-                Render(force: true);
+                Render(force: false);
             }
         }
 
@@ -113,7 +114,7 @@ public partial class LogConsolePopup : Window
         }
 
         ApplyFontSettingsTree();
-        Render(force: true);
+        Render(force: false);
     }
 
     private void OnWindowInput(InputEvent @event)
@@ -125,6 +126,14 @@ public partial class LogConsolePopup : Window
 
         if (LogConsoleHost.TryHandleToggleShortcut(@event))
         {
+            return;
+        }
+
+        if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.C } copyKey
+            && (copyKey.CtrlPressed || copyKey.MetaPressed)
+            && output?.CopySelectionToClipboard() == true)
+        {
+            GetViewport()?.SetInputAsHandled();
             return;
         }
 
@@ -327,7 +336,7 @@ public partial class LogConsolePopup : Window
         ApplyDisplayServerWindowPlacement(targetScreen, targetSize, targetPosition);
 
         ApplyFontSettingsTree();
-        Render(force: true);
+        Render(force: false);
 
         DisplayDiagnostics.LogWindowState(
             $"Popup.ApplyConfiguredScreenPlacement reason={reason}",
@@ -460,7 +469,7 @@ public partial class LogConsolePopup : Window
             return;
         }
 
-        Render(force: true);
+        Render(force: false);
     }
 
     private void BuildLayout()
@@ -509,6 +518,7 @@ public partial class LogConsolePopup : Window
         clearButton.Pressed += () =>
         {
             LogCaptureService.Clear();
+            viewportModel.Clear();
             Render(force: true);
         };
         header.AddChild(clearButton);
@@ -516,6 +526,15 @@ public partial class LogConsolePopup : Window
         closeButton = new Button();
         closeButton.Pressed += ClosePopup;
         header.AddChild(closeButton);
+
+        filterDebounceTimer = new Godot.Timer
+        {
+            OneShot = true,
+            WaitTime = 0.15,
+            ProcessMode = ProcessModeEnum.Always
+        };
+        filterDebounceTimer.Timeout += ApplyPendingFilter;
+        AddChild(filterDebounceTimer);
 
         var filterRow = new HBoxContainer
         {
@@ -547,19 +566,18 @@ public partial class LogConsolePopup : Window
 
         root.AddChild(new HSeparator());
 
-        output = new RichTextLabel
+        output = new VirtualLogView
         {
-            BbcodeEnabled = false,
-            ScrollActive = true,
-            ScrollFollowing = true,
-            SelectionEnabled = true,
-            ContextMenuEnabled = true,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-            Text = ""
+            CustomMinimumSize = new Vector2(0f, 240f),
+            EmptyText = T("NO_LOGS", "暂无日志。"),
+            NoMatchesText = T("NO_MATCHES", "没有匹配的日志。")
         };
-        ApplyOutputFontSettings();
         root.AddChild(output);
+        output.SetModel(viewportModel);
+        output.SnapshotChanged += OnViewportSnapshotChanged;
+        ApplyOutputFontSettings();
     }
 
     private void Render(bool force)
@@ -569,157 +587,65 @@ public partial class LogConsolePopup : Window
             return;
         }
 
-        LogEntry[] entries = LogCaptureService.Snapshot();
-        output.Clear();
-
-        if (entries.Length == 0)
+        LogLineFormatter currentFormatter = LogLineFormatter.FromSettings();
+        bool formatterChanged = currentFormatter.ShowTimestamp != formatter.ShowTimestamp
+            || currentFormatter.ShowLevel != formatter.ShowLevel;
+        formatter = currentFormatter;
+        if (formatterChanged)
         {
-            UpdateFilterStatus(0, 0);
-            output.PushColor(new Color(0.54f, 0.57f, 0.60f));
-            output.AddText(T("NO_LOGS", "暂无日志。No logs yet."));
-            output.Pop();
-            renderedVersion = LogCaptureService.Version;
-            return;
+            viewportModel.SetFilter(filterPattern, formatter);
         }
 
-        LogEntry[] visibleEntries = GetFilteredEntries(entries);
-        UpdateFilterStatus(entries.Length, visibleEntries.Length);
-
-        if (visibleEntries.Length == 0)
-        {
-            output.PushColor(new Color(0.54f, 0.57f, 0.60f));
-            output.AddText(filterError ?? T("NO_MATCHES", "没有匹配的日志。"));
-            output.Pop();
-            renderedVersion = LogCaptureService.Version;
-            return;
-        }
-
-        foreach (LogEntry entry in visibleEntries)
-        {
-            output.PushColor(ColorFor(entry.Level));
-            output.AddText(BuildLine(entry));
-            output.Pop();
-            output.AddText("\n");
-        }
-
+        output.SetFormatter(formatter);
+        output.Refresh(forceFollowTail: force);
         renderedVersion = LogCaptureService.Version;
-        output.ScrollToLine(Math.Max(0, output.GetLineCount() - 1));
     }
 
     private void OnFilterTextChanged(string value)
     {
-        filterPattern = value ?? string.Empty;
-        filterRegex = null;
-        filterError = null;
+        pendingFilterPattern = value ?? string.Empty;
+        filterDebounceTimer?.Start();
+    }
+
+    private void ApplyPendingFilter()
+    {
+        filterPattern = pendingFilterPattern;
+        formatter = LogLineFormatter.FromSettings();
+        viewportModel.SetFilter(filterPattern, formatter);
         Render(force: true);
     }
 
-    private LogEntry[] GetFilteredEntries(LogEntry[] entries)
+    private void OnViewportSnapshotChanged(LogViewportSnapshot snapshot)
     {
-        if (string.IsNullOrWhiteSpace(filterPattern))
-        {
-            return entries;
-        }
-
-        filterError = null;
-        if (!TryGetFilterRegex(out Regex? maybeRegex) || maybeRegex == null)
-        {
-            return [];
-        }
-
-        Regex regex = maybeRegex;
-        var filtered = new List<LogEntry>(entries.Length);
-        foreach (LogEntry entry in entries)
-        {
-            string line = BuildLine(entry);
-            try
-            {
-                if (regex.IsMatch(line))
-                {
-                    filtered.Add(entry);
-                }
-            }
-            catch (RegexMatchTimeoutException)
-            {
-                filterError = "正则筛选超时。";
-                return [];
-            }
-        }
-
-        return [.. filtered];
+        UpdateFilterStatus(snapshot);
     }
 
-    private bool TryGetFilterRegex(out Regex? regex)
-    {
-        regex = null;
-
-        if (filterRegex != null)
-        {
-            regex = filterRegex;
-            return true;
-        }
-
-        try
-        {
-            filterRegex = new Regex(
-                filterPattern,
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
-                FilterRegexTimeout);
-            regex = filterRegex;
-            return true;
-        }
-        catch (ArgumentException ex)
-        {
-            filterError = "正则无效：" + ex.Message;
-            return false;
-        }
-    }
-
-    private void UpdateFilterStatus(int totalCount, int visibleCount)
+    private void UpdateFilterStatus(LogViewportSnapshot snapshot)
     {
         if (filterStatus == null)
         {
             return;
         }
 
-        if (!string.IsNullOrWhiteSpace(filterError))
+        if (!string.IsNullOrWhiteSpace(snapshot.FilterError))
         {
-            filterStatus.Text = filterError;
+            filterStatus.Text = snapshot.FilterError;
             filterStatus.Modulate = new Color(1.00f, 0.42f, 0.42f);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(filterPattern))
         {
-            filterStatus.Text = $"{totalCount}";
+            filterStatus.Text = snapshot.FollowTail
+                ? $"{snapshot.TotalCount}"
+                : $"{snapshot.FirstRow + 1}-{snapshot.LastRow + 1}/{snapshot.TotalRows}";
             filterStatus.Modulate = new Color(0.72f, 0.75f, 0.76f);
             return;
         }
 
-        filterStatus.Text = $"{visibleCount}/{totalCount}";
+        string followText = snapshot.FollowTail ? string.Empty : " · " + T("HISTORY_SUFFIX", "历史");
+        filterStatus.Text = $"{snapshot.MatchCount}/{snapshot.TotalCount}{followText}";
         filterStatus.Modulate = new Color(0.72f, 0.89f, 0.78f);
-    }
-
-    private static string BuildLine(LogEntry entry)
-    {
-        var builder = new StringBuilder(128 + entry.Message.Length);
-
-        if (LogConsoleSettings.ShowTimestamp)
-        {
-            builder.Append('[')
-                .Append(entry.Time.ToString("HH:mm:ss.fff"))
-                .Append("] ");
-        }
-
-        if (LogConsoleSettings.ShowLevel)
-        {
-            builder.Append('[')
-                .Append(entry.Level)
-                .Append("] ");
-        }
-
-        builder.Append(NormalizeNewlines(entry.Message));
-        return builder.ToString();
     }
 
     private void ApplyLocalizedText()
@@ -761,6 +687,12 @@ public partial class LogConsolePopup : Window
             copyFilteredButton.Text = T("COPY_VISIBLE", "复制显示");
         }
 
+        if (output != null)
+        {
+            output.EmptyText = T("NO_LOGS", "暂无日志。");
+            output.NoMatchesText = T("NO_MATCHES", "没有匹配的日志。");
+        }
+
         lastAppliedLanguage = L10n.CurrentLanguage;
     }
 
@@ -769,44 +701,19 @@ public partial class LogConsolePopup : Window
         return L10n.Resolve($"EXTENSION.JMCLOGCONSOLE.UI.{key}", fallback);
     }
 
-    private static string BuildPlainText(LogEntry[] entries)
-    {
-        var builder = new StringBuilder(entries.Length * 128);
-        foreach (LogEntry entry in entries)
-        {
-            builder.AppendLine(BuildLine(entry));
-        }
-
-        return builder.ToString();
-    }
-
-    private static Color ColorFor(LogLevel level)
-    {
-        return level switch
-        {
-            LogLevel.Error => new Color(1.00f, 0.42f, 0.42f),
-            LogLevel.Warn => new Color(1.00f, 0.82f, 0.40f),
-            LogLevel.Info => new Color(0.82f, 0.85f, 0.86f),
-            LogLevel.Debug => new Color(0.56f, 0.79f, 0.90f),
-            LogLevel.Load => new Color(0.72f, 0.89f, 0.78f),
-            LogLevel.VeryDebug => new Color(0.54f, 0.57f, 0.60f),
-            _ => new Color(0.82f, 0.85f, 0.86f)
-        };
-    }
-
-    private static string NormalizeNewlines(string value)
-    {
-        return value.Replace("\r\n", "\n").Replace('\r', '\n');
-    }
-
     private void CopyPlainText()
     {
-        DisplayServer.ClipboardSet(BuildPlainText(LogCaptureService.Snapshot()));
+        DisplayServer.ClipboardSet(formatter.BuildPlainText(LogCaptureService.Snapshot()));
     }
 
     private void CopyFilteredPlainText()
     {
-        DisplayServer.ClipboardSet(BuildPlainText(GetFilteredEntries(LogCaptureService.Snapshot())));
+        if (output?.CopySelectionToClipboard() == true)
+        {
+            return;
+        }
+
+        DisplayServer.ClipboardSet(output?.BuildFilteredPlainText() ?? string.Empty);
     }
 
     private Vector2I GetConfiguredDefaultWindowSize()
@@ -857,21 +764,9 @@ public partial class LogConsolePopup : Window
         }
 
         Font logFont = BuildLogFont();
-        output.AddThemeFontOverride("font", logFont);
-        output.AddThemeFontOverride("normal_font", logFont);
-        output.AddThemeFontOverride("bold_font", logFont);
-        output.AddThemeFontOverride("italics_font", logFont);
-        output.AddThemeFontOverride("bold_italics_font", logFont);
-        output.AddThemeFontOverride("mono_font", logFont);
 
         int logFontSize = GetEffectiveLogFontSize();
-        output.AddThemeFontSizeOverride("font_size", logFontSize);
-        output.AddThemeFontSizeOverride("normal_font_size", logFontSize);
-        output.AddThemeFontSizeOverride("mono_font_size", logFontSize);
-        output.AddThemeFontSizeOverride("bold_font_size", logFontSize);
-        output.AddThemeFontSizeOverride("italics_font_size", logFontSize);
-        output.AddThemeFontSizeOverride("bold_italics_font_size", logFontSize);
-        output.AddThemeConstantOverride("line_separation", Math.Clamp(LogConsoleSettings.LogLineSpacing, 0, 16));
+        output.SetLogFont(logFont, logFontSize, Math.Clamp(LogConsoleSettings.LogLineSpacing, 0, 16));
 
         lastAppliedLogFontSize = logFontSize;
     }

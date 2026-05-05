@@ -72,6 +72,7 @@
   "EXTENSION.JMCLOGCONSOLE.UI.COPY_VISIBLE": "Copy Visible",
   "EXTENSION.JMCLOGCONSOLE.UI.NO_LOGS": "No logs yet.",
   "EXTENSION.JMCLOGCONSOLE.UI.NO_MATCHES": "No matching logs.",
+  "EXTENSION.JMCLOGCONSOLE.UI.HISTORY_SUFFIX": "history",
   "EXTENSION.JMCMODLIB.CONFIG.JmcLogConsole.ui.default_open_screen.OPTION.screen.0": "Display 1",
   "EXTENSION.JMCMODLIB.CONFIG.JmcLogConsole.ui.default_open_screen.OPTION.screen.0.primary": "Display 1 (Primary)",
   "EXTENSION.JMCMODLIB.CONFIG.JmcLogConsole.ui.default_open_screen.OPTION.screen.1": "Display 2",

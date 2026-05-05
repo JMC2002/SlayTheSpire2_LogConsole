@@ -72,6 +72,7 @@
   "EXTENSION.JMCLOGCONSOLE.UI.COPY_VISIBLE": "复制显示",
   "EXTENSION.JMCLOGCONSOLE.UI.NO_LOGS": "暂无日志。",
   "EXTENSION.JMCLOGCONSOLE.UI.NO_MATCHES": "没有匹配的日志。",
+  "EXTENSION.JMCLOGCONSOLE.UI.HISTORY_SUFFIX": "历史",
   "EXTENSION.JMCMODLIB.CONFIG.JmcLogConsole.ui.default_open_screen.OPTION.screen.0": "显示器 1",
   "EXTENSION.JMCMODLIB.CONFIG.JmcLogConsole.ui.default_open_screen.OPTION.screen.0.primary": "显示器 1（主显示器）",
   "EXTENSION.JMCMODLIB.CONFIG.JmcLogConsole.ui.default_open_screen.OPTION.screen.1": "显示器 2",

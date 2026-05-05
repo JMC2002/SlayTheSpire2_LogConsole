@@ -26,7 +26,7 @@ public static class LogConsoleSettings
         Description = "MOD 初始化完成后自动显示日志窗口。",
         Key = "ui.show_on_startup",
         Order = 20)]
-    public static bool ShowOnStartup = true;
+    public static bool ShowOnStartup = false;
 
     [UIToggle]
     [Config(
@@ -104,7 +104,7 @@ public static class LogConsoleSettings
         Description = "开启后，在游戏日志里输出显示器枚举和日志窗口打开状态，用于排查多显示器/DPI/原生窗口问题。",
         Key = "ui.enable_window_diagnostics",
         Order = 35)]
-    public static bool EnableWindowDiagnostics = true;
+    public static bool EnableWindowDiagnostics = false;
 
     [UIDropdown]
     [Config(
@@ -113,7 +113,7 @@ public static class LogConsoleSettings
         Description = "只保存并显示不低于该等级的新日志。注意：这里不能捕获已经被游戏 Logger 过滤掉的日志。",
         Key = "capture.minimum_level",
         Order = 40)]
-    public static LogLevel MinimumLevel = LogLevel.VeryDebug;
+    public static LogLevel MinimumLevel = LogLevel.Info;
 
     [UIIntSlider(100, 10000)]
     [Config(
