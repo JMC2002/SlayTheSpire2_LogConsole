@@ -48,6 +48,7 @@ public partial class VirtualLogView : Control
     private string lastRefreshDiagnosticKey = string.Empty;
 
     public event Action<LogViewportSnapshot>? SnapshotChanged;
+    public event Action<int>? FontZoomRequested;
 
     public string EmptyText { get; set; } = "暂无日志。";
     public string NoMatchesText { get; set; } = "没有匹配的日志。";
@@ -287,7 +288,11 @@ public partial class VirtualLogView : Control
 
         if (mouseButton.Pressed && insideTextArea && mouseButton.ButtonIndex == MouseButton.WheelUp)
         {
-            if (mouseButton.ShiftPressed)
+            if (mouseButton.CtrlPressed || mouseButton.MetaPressed)
+            {
+                FontZoomRequested?.Invoke(1);
+            }
+            else if (mouseButton.ShiftPressed)
             {
                 ScrollHorizontally(-HorizontalWheelPixels);
             }
@@ -301,7 +306,11 @@ public partial class VirtualLogView : Control
 
         if (mouseButton.Pressed && insideTextArea && mouseButton.ButtonIndex == MouseButton.WheelDown)
         {
-            if (mouseButton.ShiftPressed)
+            if (mouseButton.CtrlPressed || mouseButton.MetaPressed)
+            {
+                FontZoomRequested?.Invoke(-1);
+            }
+            else if (mouseButton.ShiftPressed)
             {
                 ScrollHorizontally(HorizontalWheelPixels);
             }

@@ -11,6 +11,8 @@ namespace JmcLogConsole.UI;
 public partial class LogConsolePopup : Window
 {
     private static readonly Vector2I DefaultMinSize = new(720, 420);
+    private const int MinZoomedLogFontSize = 8;
+    private const int MaxZoomedLogFontSize = 96;
     private static readonly string[] DefaultControlFontFamilies =
     [
         "Segoe UI",
@@ -51,6 +53,7 @@ public partial class LogConsolePopup : Window
     private int lastAppliedFontScreen = -1;
     private int lastAppliedLogFontSize = -1;
     private int lastAppliedControlFontSize = -1;
+    private int logFontZoomOffset;
     private string lastAppliedLanguage = string.Empty;
     private bool firstNativeDpiRefreshDone;
 
@@ -577,6 +580,7 @@ public partial class LogConsolePopup : Window
         root.AddChild(output);
         output.SetModel(viewportModel);
         output.SnapshotChanged += OnViewportSnapshotChanged;
+        output.FontZoomRequested += OnOutputFontZoomRequested;
         ApplyOutputFontSettings();
     }
 
@@ -765,10 +769,32 @@ public partial class LogConsolePopup : Window
 
         Font logFont = BuildLogFont();
 
-        int logFontSize = GetEffectiveLogFontSize();
+        int baseLogFontSize = GetEffectiveLogFontSize();
+        int logFontSize = Math.Clamp(baseLogFontSize + logFontZoomOffset, MinZoomedLogFontSize, MaxZoomedLogFontSize);
         output.SetLogFont(logFont, logFontSize, Math.Clamp(LogConsoleSettings.LogLineSpacing, 0, 16));
 
         lastAppliedLogFontSize = logFontSize;
+    }
+
+    private void OnOutputFontZoomRequested(int direction)
+    {
+        int step = Math.Sign(direction);
+        if (step == 0)
+        {
+            return;
+        }
+
+        int baseLogFontSize = GetEffectiveLogFontSize();
+        int currentSize = Math.Clamp(baseLogFontSize + logFontZoomOffset, MinZoomedLogFontSize, MaxZoomedLogFontSize);
+        int nextSize = Math.Clamp(currentSize + step, MinZoomedLogFontSize, MaxZoomedLogFontSize);
+        if (nextSize == currentSize)
+        {
+            return;
+        }
+
+        logFontZoomOffset = nextSize - baseLogFontSize;
+        ApplyOutputFontSettings();
+        ModLogger.Info($"JmcLogConsoleWindow 日志字体缩放：{currentSize} -> {nextSize}，偏移={logFontZoomOffset}");
     }
 
     private int GetEffectiveLogFontSize()

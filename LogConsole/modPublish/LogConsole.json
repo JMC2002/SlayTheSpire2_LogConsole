@@ -2,7 +2,7 @@
     "id": "LogConsole",
     "name": "LogConsole",
     "author": "JMC",
-    "version": "1.0.12",
+    "version": "1.0.13",
     "description": "LogConsole Description",
     "has_pck": true,
     "has_dll": true,
