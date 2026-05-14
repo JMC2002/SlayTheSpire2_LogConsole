@@ -359,7 +359,7 @@ public partial class LogConsolePopup : Window
         ContentScaleFactor = 1.0f;
         ContentScaleSize = Vector2I.Zero;
         SetUseFontOversampling(true);
-        OversamplingOverride = GetFontOversampling();
+        OversamplingOverride = GetWindowFontOversampling();
         GuiSnapControlsToPixels = true;
     }
 
@@ -640,6 +640,10 @@ public partial class LogConsolePopup : Window
         hash.Add(LogConsoleSettings.LogFontSize);
         hash.Add(LogConsoleSettings.ControlFontSize);
         hash.Add(LogConsoleSettings.LogLineSpacing);
+        hash.Add(LogConsoleSettings.LogFontOversamplingScale);
+        hash.Add(LogConsoleSettings.LogFontAntialiasing);
+        hash.Add(LogConsoleSettings.LogFontHinting);
+        hash.Add(LogConsoleSettings.LogFontSubpixelPositioning);
         return hash.ToHashCode();
     }
 
@@ -1138,6 +1142,17 @@ public partial class LogConsolePopup : Window
         return GetDpiScale();
     }
 
+    private float GetLogFontOversampling()
+    {
+        float scale = Math.Clamp(LogConsoleSettings.LogFontOversamplingScale, 0.5f, 3.0f);
+        return Math.Clamp(GetDpiScale() * scale, 1.0f, 8.0f);
+    }
+
+    private float GetWindowFontOversampling()
+    {
+        return MathF.Max(GetFontOversampling(), GetLogFontOversampling());
+    }
+
     private Font BuildControlFont()
     {
         return BuildSystemFont(
@@ -1155,10 +1170,10 @@ public partial class LogConsolePopup : Window
         return BuildSystemFont(
             LogConsoleSettings.FontFamilies,
             DefaultLogFontFamilies,
-            GetFontOversampling(),
-            TextServer.FontAntialiasing.Lcd,
-            TextServer.Hinting.Light,
-            TextServer.SubpixelPositioning.OneQuarter,
+            GetLogFontOversampling(),
+            GetLogFontAntialiasing(),
+            GetLogFontHinting(),
+            GetLogFontSubpixelPositioning(),
             400);
     }
 
@@ -1188,9 +1203,43 @@ public partial class LogConsolePopup : Window
             SubpixelPositioning = subpixelPositioning,
             DisableEmbeddedBitmaps = true,
             KeepRoundingRemainders = true,
-            Oversampling = Math.Clamp(oversampling, 1.0f, 4.0f),
+            Oversampling = Math.Clamp(oversampling, 1.0f, 8.0f),
             AllowSystemFallback = true,
             ModulateColorGlyphs = true
+        };
+    }
+
+    private static TextServer.FontAntialiasing GetLogFontAntialiasing()
+    {
+        return LogConsoleSettings.LogFontAntialiasing switch
+        {
+            LogConsoleSettings.AntialiasingNone => TextServer.FontAntialiasing.None,
+            LogConsoleSettings.AntialiasingGray => TextServer.FontAntialiasing.Gray,
+            LogConsoleSettings.AntialiasingLcd => TextServer.FontAntialiasing.Lcd,
+            _ => TextServer.FontAntialiasing.Lcd
+        };
+    }
+
+    private static TextServer.Hinting GetLogFontHinting()
+    {
+        return LogConsoleSettings.LogFontHinting switch
+        {
+            LogConsoleSettings.HintingNone => TextServer.Hinting.None,
+            LogConsoleSettings.HintingNormal => TextServer.Hinting.Normal,
+            LogConsoleSettings.HintingLight => TextServer.Hinting.Light,
+            _ => TextServer.Hinting.Light
+        };
+    }
+
+    private static TextServer.SubpixelPositioning GetLogFontSubpixelPositioning()
+    {
+        return LogConsoleSettings.LogFontSubpixelPositioning switch
+        {
+            LogConsoleSettings.SubpixelDisabled => TextServer.SubpixelPositioning.Disabled,
+            LogConsoleSettings.SubpixelOneHalf => TextServer.SubpixelPositioning.OneHalf,
+            LogConsoleSettings.SubpixelAuto => TextServer.SubpixelPositioning.Auto,
+            LogConsoleSettings.SubpixelOneQuarter => TextServer.SubpixelPositioning.OneQuarter,
+            _ => TextServer.SubpixelPositioning.OneQuarter
         };
     }
 

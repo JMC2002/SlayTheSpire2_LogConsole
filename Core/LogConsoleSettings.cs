@@ -9,6 +9,16 @@ namespace JmcLogConsole.Core;
 public static class LogConsoleSettings
 {
     private const string Group = "日志窗口";
+    public const string AntialiasingNone = "none";
+    public const string AntialiasingGray = "gray";
+    public const string AntialiasingLcd = "lcd";
+    public const string HintingNone = "none";
+    public const string HintingLight = "light";
+    public const string HintingNormal = "normal";
+    public const string SubpixelDisabled = "disabled";
+    public const string SubpixelOneQuarter = "one_quarter";
+    public const string SubpixelOneHalf = "one_half";
+    public const string SubpixelAuto = "auto";
 
     [UIToggle]
     [Config(
@@ -168,7 +178,7 @@ public static class LogConsoleSettings
         Order = 81)]
     public static bool AutoScaleFont = true;
 
-    [UIFloatSlider(0.75f, 2.0f, decimalPlaces: 2)]
+    [UISlider(0.75, 2.0, 0.01)]
     [Config(
         "自动字体缩放倍率",
         group: Group,
@@ -204,7 +214,7 @@ public static class LogConsoleSettings
         Order = 85)]
     public static bool AutoScaleWindowSize = true;
 
-    [UIFloatSlider(0.75f, 1.50f, decimalPlaces: 2)]
+    [UISlider(0.75, 1.50, 0.01)]
     [Config(
         "自动窗口尺寸倍率",
         group: Group,
@@ -239,4 +249,55 @@ public static class LogConsoleSettings
         Key = "ui.log_line_spacing",
         Order = 89)]
     public static int LogLineSpacing = 2;
+
+    [UISlider(0.5, 3.0, 0.01)]
+    [Config(
+        "日志字体采样倍率",
+        group: Group,
+        Description = "在当前 DPI 字体采样率基础上再乘以该倍率。较高值可能让文字更平滑，但会增加字体纹理开销。",
+        Key = "ui.log_font_oversampling_scale",
+        Order = 90)]
+    public static float LogFontOversamplingScale = 1.0f;
+
+    [UIDropdown]
+    [Config(
+        "日志字体抗锯齿",
+        group: Group,
+        Description = "日志正文使用的字体抗锯齿模式。LCD 可能更锐利，也可能在截图或非标准缩放下出现彩边。",
+        Key = "ui.log_font_antialiasing",
+        Order = 91)]
+    public static string LogFontAntialiasing = AntialiasingLcd;
+
+    public static IReadOnlyList<string> GetLogFontAntialiasingOptions()
+    {
+        return [AntialiasingGray, AntialiasingLcd, AntialiasingNone];
+    }
+
+    [UIDropdown]
+    [Config(
+        "日志字体 Hinting",
+        group: Group,
+        Description = "控制字体轮廓如何贴合像素网格。Light 通常更自然，Normal 可能更锐利。",
+        Key = "ui.log_font_hinting",
+        Order = 92)]
+    public static string LogFontHinting = HintingLight;
+
+    public static IReadOnlyList<string> GetLogFontHintingOptions()
+    {
+        return [HintingLight, HintingNormal, HintingNone];
+    }
+
+    [UIDropdown]
+    [Config(
+        "日志字体子像素定位",
+        group: Group,
+        Description = "控制字形在子像素位置的布局方式。若文字发虚或抖动，可尝试关闭或切换为 Auto。",
+        Key = "ui.log_font_subpixel_positioning",
+        Order = 93)]
+    public static string LogFontSubpixelPositioning = SubpixelOneQuarter;
+
+    public static IReadOnlyList<string> GetLogFontSubpixelPositioningOptions()
+    {
+        return [SubpixelOneQuarter, SubpixelOneHalf, SubpixelAuto, SubpixelDisabled];
+    }
 }

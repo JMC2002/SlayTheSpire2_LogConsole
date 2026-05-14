@@ -3,7 +3,6 @@ using JmcLogConsole.Core;
 using JmcLogConsole.UI;
 using JmcModLib.Core;
 using JmcModLib.Utils;
-using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Modding;
 using ModVersionInfo = JmcLogConsole.Core.VersionInfo;
 
@@ -14,8 +13,7 @@ public partial class MainFile : Node
 {
     public static void Initialize()
     {
-        ModRegistry.Register(true, ModVersionInfo.Name, ModVersionInfo.Name, ModVersionInfo.Version)?
-            .RegisterLogger(LogLevel.Info, uIFlags: LogConfigUIFlags.All)
+        ModRegistry.Register<MainFile>(true)?
             .RegisterButton(
                 "打开或关闭日志窗口",
                 LogConsoleHost.Toggle,
@@ -30,7 +28,6 @@ public partial class MainFile : Node
                 group: "日志窗口",
                 storageKey: "button.clear_logs",
                 order: 110)
-            .UseConfig()
             .Done();
 
         LogCaptureService.Initialize();
