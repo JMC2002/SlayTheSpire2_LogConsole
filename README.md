@@ -42,13 +42,13 @@ Steam版本直接在创意工坊订阅即可（暂未开放）
 
 [Github仓库](https://github.com/JMC2002/SlayTheSpire2_LogConsole)
 ## ⚙️ 2. 功能
-- 可通过 JmcModLib 热键打开或关闭日志窗口
-- 支持清空日志窗口缓存
-- 支持在模组设置中调整窗口位置、大小、显示器等选项
+- 可通过热键（可配置，支持手柄、组合键）打开或关闭日志窗口
+- 支持正则筛选
  
 ## 🔔 3. 提醒
 - **本模组强依赖于模组[JmcModLib](https://github.com/JMC2002/JmcModLib_STS2/releases)**
 - 日志窗口配置由 JmcModLib 提供，修改后会保存到本地配置文件。
+- 本地化文本除中文外由AI生成，欢迎贡献文本。
  
 ## 🧩 4. 兼容性
 - 由于游戏处于EA阶段，可能会随着游戏版本更新而失效
